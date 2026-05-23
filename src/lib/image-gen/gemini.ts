@@ -6,7 +6,7 @@ import type {
 } from "./interface";
 import { buildPrompt } from "./prompts";
 
-const MODEL = process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image-preview";
+const MODEL = process.env.GEMINI_IMAGE_MODEL ?? "gemini-3.1-flash-image-preview";
 
 export class GeminiImageGenProvider implements ImageGenProvider {
   readonly name = "gemini";
