@@ -2,7 +2,7 @@ import { Container } from "@/components/Container";
 
 export default function PrivacyPage() {
   return (
-    <Container authed={false}>
+    <Container>
       <article className="prose prose-stone mx-auto max-w-3xl">
         <h1 className="text-2xl font-bold">プライバシーポリシー</h1>
         <p className="mt-2 text-sm text-stone-500">最終更新日: 2026-05-23</p>

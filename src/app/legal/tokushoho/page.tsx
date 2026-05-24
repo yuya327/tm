@@ -2,7 +2,7 @@ import { Container } from "@/components/Container";
 
 export default function TokushohoPage() {
   return (
-    <Container authed={false}>
+    <Container>
       <article className="mx-auto max-w-3xl">
         <h1 className="text-2xl font-bold">特定商取引法に基づく表記</h1>
         <p className="mt-2 text-sm text-stone-500">最終更新日: 2026-05-23</p>

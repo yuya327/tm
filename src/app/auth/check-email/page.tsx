@@ -5,7 +5,7 @@ import { Footer } from "@/components/Footer";
 export default function CheckEmailPage() {
   return (
     <>
-      <Header authed={false} />
+      <Header />
       <main className="flex flex-1 flex-col items-center justify-center px-4 py-16">
         <div className="mx-auto w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 text-orange-600">
