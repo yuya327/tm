@@ -177,3 +177,128 @@ export async function createAlbum(name: string): Promise<Album> {
   if (error) throw error;
   return data;
 }
+
+// ============================================================================
+// Print orders
+// ============================================================================
+
+export type PrintOrder = {
+  id: string;
+  size_cm_width: number;
+  size_cm_height: number;
+  total_quantity: number;
+  total_jpy: number;
+  status: string;
+  provider: string;
+  provider_checkout_url: string | null;
+  created_at: string;
+};
+
+export type PrintOrderItem = {
+  edit_id: string;
+  quantity: number;
+};
+
+export type PrintOrderInput = {
+  sizeCmWidth: number;
+  sizeCmHeight: number;
+  items: PrintOrderItem[];
+  totalJpy: number;
+};
+
+export async function createPrintOrder(
+  input: PrintOrderInput
+): Promise<PrintOrder> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("認証が必要です");
+
+  const totalQuantity = input.items.reduce((sum, i) => sum + i.quantity, 0);
+
+  const { data: order, error: orderErr } = await supabase
+    .from("print_orders")
+    .insert({
+      user_id: user.id,
+      size_cm_width: input.sizeCmWidth,
+      size_cm_height: input.sizeCmHeight,
+      total_quantity: totalQuantity,
+      total_jpy: input.totalJpy,
+      provider: "suzuri",
+      status: "pending",
+    })
+    .select("id, size_cm_width, size_cm_height, total_quantity, total_jpy, status, provider, provider_checkout_url, created_at")
+    .single();
+
+  if (orderErr) throw orderErr;
+
+  const itemRows = input.items.map((i) => ({
+    order_id: order.id,
+    edit_id: i.edit_id,
+    quantity: i.quantity,
+  }));
+  const { error: itemsErr } = await supabase
+    .from("print_order_items")
+    .insert(itemRows);
+  if (itemsErr) throw itemsErr;
+
+  return order;
+}
+
+export async function getOrder(id: string): Promise<PrintOrder | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("print_orders")
+    .select("id, size_cm_width, size_cm_height, total_quantity, total_jpy, status, provider, provider_checkout_url, created_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function markOrderCreated(
+  id: string,
+  providerUrl: string
+): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("print_orders")
+    .update({ status: "created", provider_checkout_url: providerUrl })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export type OrderWithAlbum = PrintOrder & {
+  album_name: string | null;
+};
+
+export async function listOrders(): Promise<OrderWithAlbum[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("print_orders")
+    .select("id, size_cm_width, size_cm_height, total_quantity, total_jpy, status, provider, provider_checkout_url, created_at, print_order_items(edit_id, quantity, edits(photos(albums(name))))")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  if (!data) return [];
+
+  return data.map((o) => {
+    const items = (o as { print_order_items?: Array<{ edits?: { photos?: { albums?: { name: string } | null } | null } | null }> })
+      .print_order_items ?? [];
+    const firstAlbumName =
+      items[0]?.edits?.photos?.albums?.name ?? null;
+    return {
+      id: o.id,
+      size_cm_width: o.size_cm_width,
+      size_cm_height: o.size_cm_height,
+      total_quantity: o.total_quantity,
+      total_jpy: o.total_jpy,
+      status: o.status,
+      provider: o.provider,
+      provider_checkout_url: o.provider_checkout_url,
+      created_at: o.created_at,
+      album_name: firstAlbumName,
+    };
+  });
+}
