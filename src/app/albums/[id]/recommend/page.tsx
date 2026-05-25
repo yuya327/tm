@@ -28,7 +28,15 @@ export default async function RecommendPage({
       <StepIndicator current={3} />
 
       <section className="mt-2 rounded-xl border border-stone-200 bg-white p-6">
-        <h2 className="text-base font-semibold">加工する写真を選ぶ</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">加工する写真を選ぶ</h2>
+          <Link
+            href={`/albums/${id}/upload`}
+            className="text-xs text-orange-600 hover:underline"
+          >
+            + 写真を追加する
+          </Link>
+        </div>
         <PhotoSelector albumId={id} initialPhotos={photos} />
       </section>
     </Container>

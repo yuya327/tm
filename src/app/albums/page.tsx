@@ -32,7 +32,11 @@ export default async function AlbumsPage() {
           {albums.map((a) => (
             <li key={a.id}>
               <Link
-                href={`/albums/${a.id}/upload`}
+                href={
+                  a.photo_count > 0
+                    ? `/albums/${a.id}/recommend`
+                    : `/albums/${a.id}/upload`
+                }
                 className="block rounded-xl border border-stone-200 bg-white p-4 transition hover:border-orange-500 hover:shadow-sm"
               >
                 <div className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-stone-100 text-stone-400">

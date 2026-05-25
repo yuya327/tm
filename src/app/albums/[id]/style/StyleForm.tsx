@@ -7,8 +7,12 @@ import { STYLE_LABELS, type Style } from "@/lib/image-gen/interface";
 const STYLES = Object.entries(STYLE_LABELS) as [Style, string][];
 
 type Photo = { id: string; url: string };
-type ProgressItem = {
+
+type PhotoConfig = {
   photoId: string;
+  url: string;
+  style: Style;
+  customPrompt: string;
   status: "pending" | "processing" | "completed" | "failed";
   error?: string;
 };
@@ -20,42 +24,55 @@ export function StyleForm({
   albumId: string;
   photos: Photo[];
 }) {
-  const [style, setStyle] = useState<Style>("anime");
-  const [customPrompt, setCustomPrompt] = useState("");
-  const [progress, setProgress] = useState<ProgressItem[]>([]);
+  const [configs, setConfigs] = useState<PhotoConfig[]>(
+    photos.map((p) => ({
+      photoId: p.id,
+      url: p.url,
+      style: "anime",
+      customPrompt: "",
+      status: "pending",
+    }))
+  );
+  const [bulkStyle, setBulkStyle] = useState<Style>("anime");
+  const [bulkPrompt, setBulkPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const router = useRouter();
 
-  const total = progress.length;
-  const done = progress.filter((p) => p.status === "completed").length;
-  const failed = progress.filter((p) => p.status === "failed").length;
+  const total = configs.length;
+  const done = configs.filter((c) => c.status === "completed").length;
+  const failed = configs.filter((c) => c.status === "failed").length;
 
-  async function transformOne(photoId: string) {
-    setProgress((prev) =>
-      prev.map((p) => (p.photoId === photoId ? { ...p, status: "processing" } : p))
+  function updateConfig(photoId: string, patch: Partial<PhotoConfig>) {
+    setConfigs((prev) =>
+      prev.map((c) => (c.photoId === photoId ? { ...c, ...patch } : c))
     );
+  }
+
+  function applyToAll() {
+    setConfigs((prev) =>
+      prev.map((c) => ({ ...c, style: bulkStyle, customPrompt: bulkPrompt }))
+    );
+  }
+
+  async function transformOne(config: PhotoConfig) {
+    updateConfig(config.photoId, { status: "processing", error: undefined });
 
     try {
       const res = await fetch("/api/transform-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoId, style, customPrompt }),
+        body: JSON.stringify({
+          photoId: config.photoId,
+          style: config.style,
+          customPrompt: config.customPrompt,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-
-      setProgress((prev) =>
-        prev.map((p) =>
-          p.photoId === photoId ? { ...p, status: "completed" } : p
-        )
-      );
+      updateConfig(config.photoId, { status: "completed" });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "unknown";
-      setProgress((prev) =>
-        prev.map((p) =>
-          p.photoId === photoId ? { ...p, status: "failed", error: msg } : p
-        )
-      );
+      updateConfig(config.photoId, { status: "failed", error: msg });
     }
   }
 
@@ -63,15 +80,14 @@ export function StyleForm({
     e.preventDefault();
     if (busy) return;
     setBusy(true);
-    setProgress(photos.map((p) => ({ photoId: p.id, status: "pending" })));
 
-    // 並列実行 (Geminiのレート制限と Vercel の接続数を考慮し最大3並列)
+    // 並列実行（最大3並列）
     const concurrency = 3;
-    const queue = [...photos];
+    const queue = [...configs];
     const workers = Array.from({ length: concurrency }, async () => {
       while (queue.length > 0) {
         const next = queue.shift();
-        if (next) await transformOne(next.id);
+        if (next) await transformOne(next);
       }
     });
     await Promise.all(workers);
@@ -82,40 +98,111 @@ export function StyleForm({
 
   return (
     <form onSubmit={handleSubmit}>
-      <h2 className="text-base font-semibold">どのスタイルに加工しますか？</h2>
-      <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {STYLES.map(([key, label]) => (
-          <li key={key}>
-            <label className="block cursor-pointer">
-              <input
-                type="radio"
-                name="style"
-                checked={style === key}
-                onChange={() => setStyle(key)}
+      {/* 一括適用パネル */}
+      <section className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+        <p className="text-sm font-medium">一括適用（同じ設定をすべてに）</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="flex gap-1">
+            {STYLES.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setBulkStyle(key)}
                 disabled={busy}
-                className="peer sr-only"
+                className={`rounded-full px-3 py-1 text-xs ${
+                  bulkStyle === key
+                    ? "bg-stone-900 text-white"
+                    : "border border-stone-300 bg-white"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <input
+            type="text"
+            value={bulkPrompt}
+            onChange={(e) => setBulkPrompt(e.target.value)}
+            disabled={busy}
+            placeholder="一括の追加要望（任意）"
+            className="flex-1 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs focus:border-orange-500 focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={applyToAll}
+            disabled={busy}
+            className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-100"
+          >
+            全部に適用
+          </button>
+        </div>
+      </section>
+
+      {/* 個別設定リスト */}
+      <ul className="mt-6 space-y-3">
+        {configs.map((c) => (
+          <li
+            key={c.photoId}
+            className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-3 sm:flex-row sm:items-center"
+          >
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-stone-100">
+              <img
+                src={c.url}
+                alt=""
+                className="h-full w-full object-cover"
               />
-              <div className="rounded-xl border-2 border-stone-200 bg-white p-3 text-center peer-checked:border-orange-500 peer-checked:ring-2 peer-checked:ring-orange-200">
-                <p className="text-sm font-medium">{label}</p>
+              {c.status === "completed" && (
+                <span className="absolute right-1 top-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  ✓
+                </span>
+              )}
+              {c.status === "processing" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                </div>
+              )}
+              {c.status === "failed" && (
+                <span className="absolute inset-0 flex items-center justify-center bg-red-500/80 text-xs text-white">
+                  ✗
+                </span>
+              )}
+            </div>
+
+            <div className="flex-1">
+              <div className="flex flex-wrap gap-1">
+                {STYLES.map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => updateConfig(c.photoId, { style: key })}
+                    disabled={busy}
+                    className={`rounded-full px-3 py-1 text-xs ${
+                      c.style === key
+                        ? "bg-orange-500 text-white"
+                        : "border border-stone-300 bg-white"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            </label>
+              <input
+                type="text"
+                value={c.customPrompt}
+                onChange={(e) =>
+                  updateConfig(c.photoId, { customPrompt: e.target.value })
+                }
+                disabled={busy}
+                placeholder="個別の追加要望（任意・例: 表情を明るく）"
+                className="mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs focus:border-orange-500 focus:outline-none"
+              />
+              {c.error && (
+                <p className="mt-1 text-xs text-red-600">エラー: {c.error}</p>
+              )}
+            </div>
           </li>
         ))}
       </ul>
-
-      <div className="mt-6">
-        <label className="block text-sm font-medium">
-          追加の要望（自由記述・任意）
-        </label>
-        <textarea
-          value={customPrompt}
-          onChange={(e) => setCustomPrompt(e.target.value)}
-          disabled={busy}
-          rows={3}
-          placeholder="例) 表情をもっと明るく、肌をきれいに"
-          className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"
-        />
-      </div>
 
       {busy && (
         <div className="mt-6">
@@ -132,9 +219,7 @@ export function StyleForm({
       )}
 
       <div className="mt-6 flex items-center justify-between">
-        <p className="text-xs text-stone-500">
-          対象: {photos.length}枚 × 1スタイル
-        </p>
+        <p className="text-xs text-stone-500">対象: {photos.length}枚（個別設定可）</p>
         <button
           type="submit"
           disabled={busy || photos.length === 0}
