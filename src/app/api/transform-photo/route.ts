@@ -47,8 +47,9 @@ export async function POST(req: Request) {
       .download(photo.storage_path);
 
     if (dlErr || !blob) {
+      console.error("[/api/transform-photo] storage download failed:", dlErr);
       return NextResponse.json(
-        { error: "元画像のダウンロードに失敗" },
+        { error: `Storage download: ${dlErr?.message ?? "no blob"}` },
         { status: 500 }
       );
     }
@@ -97,6 +98,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ editId, status: "completed" });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "unknown";
+      console.error("[/api/transform-photo] inner error:", msg, err);
       await supabase
         .from("edits")
         .update({ status: "failed", error: msg })
