@@ -3,11 +3,13 @@
 import { redirect } from "next/navigation";
 import {
   createPrintOrder,
+  downloadEditAsDataUri,
+  listOrderItemsForFulfillment,
   markOrderCreated,
+  saveOrderItemProductUrl,
 } from "@/lib/supabase/queries";
+import { getPrintProvider } from "@/lib/print-providers";
 import { calcTotal, getSize, type SizeKey } from "./pricing";
-
-const SUZURI_HANDOFF_URL = "https://suzuri.jp/";
 
 export async function createOrderAction(formData: FormData) {
   const albumId = formData.get("albumId") as string;
@@ -38,6 +40,41 @@ export async function createOrderAction(formData: FormData) {
 
 export async function handoffToSuzuriAction(formData: FormData) {
   const orderId = formData.get("orderId") as string;
-  await markOrderCreated(orderId, SUZURI_HANDOFF_URL);
-  redirect(SUZURI_HANDOFF_URL);
+  const albumId = formData.get("albumId") as string;
+  if (!orderId) throw new Error("orderId が必要です");
+
+  const orderItems = await listOrderItemsForFulfillment(orderId);
+  if (orderItems.length === 0) {
+    throw new Error("注文アイテムがありません");
+  }
+
+  const provider = getPrintProvider();
+
+  const printItems = await Promise.all(
+    orderItems.map(async (it) => {
+      const imageDataUri = await downloadEditAsDataUri(it.result_storage_path);
+      return {
+        itemId: it.id,
+        imageDataUri,
+        title: `Travel Sticker (${it.edit_id.slice(0, 8)})`,
+        size: { widthCm: 5, heightCm: 5 }, // SUZURI は M 1種類のため記録用
+        quantity: it.quantity,
+      };
+    })
+  );
+
+  const result = await provider.createOrder({
+    userId: "", // SUZURI 単一アカウント運用なので未使用
+    items: printItems,
+  });
+
+  await Promise.all(
+    result.items.map((r) =>
+      saveOrderItemProductUrl(r.itemId, r.providerItemId, r.productUrl)
+    )
+  );
+
+  await markOrderCreated(orderId, result.checkoutUrl);
+
+  redirect(`/albums/${albumId}/order/done?orderId=${orderId}`);
 }

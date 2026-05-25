@@ -269,6 +269,116 @@ export async function markOrderCreated(
   if (error) throw error;
 }
 
+export type OrderItemForFulfillment = {
+  id: string;
+  edit_id: string;
+  quantity: number;
+  result_storage_path: string;
+  mime_type: string;
+};
+
+export async function listOrderItemsForFulfillment(
+  orderId: string
+): Promise<OrderItemForFulfillment[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("print_order_items")
+    .select("id, edit_id, quantity, edits!inner(result_storage_path, photos!inner(mime_type))")
+    .eq("order_id", orderId);
+
+  if (error) throw error;
+  if (!data) return [];
+
+  return (data as unknown as Array<{
+    id: string;
+    edit_id: string;
+    quantity: number;
+    edits: {
+      result_storage_path: string;
+      photos: { mime_type: string };
+    };
+  }>).map((r) => ({
+    id: r.id,
+    edit_id: r.edit_id,
+    quantity: r.quantity,
+    result_storage_path: r.edits.result_storage_path,
+    mime_type: r.edits.photos.mime_type,
+  }));
+}
+
+export async function downloadEditAsDataUri(
+  storagePath: string
+): Promise<string> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.storage
+    .from("edits")
+    .download(storagePath);
+  if (error) throw error;
+
+  const buf = Buffer.from(await data.arrayBuffer());
+  // edits バケットには PNG / JPEG が入っている前提（変換後の画像）
+  const mime = data.type || "image/png";
+  return `data:${mime};base64,${buf.toString("base64")}`;
+}
+
+export async function saveOrderItemProductUrl(
+  itemId: string,
+  providerItemId: string,
+  productUrl: string
+): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("print_order_items")
+    .update({ provider_item_id: providerItemId, product_url: productUrl })
+    .eq("id", itemId);
+  if (error) throw error;
+}
+
+export type OrderItemWithProductUrl = {
+  id: string;
+  edit_id: string;
+  quantity: number;
+  provider_item_id: string | null;
+  product_url: string | null;
+  after_url: string;
+};
+
+export async function listOrderItemsWithProductUrl(
+  orderId: string
+): Promise<OrderItemWithProductUrl[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("print_order_items")
+    .select("id, edit_id, quantity, provider_item_id, product_url, edits!inner(result_storage_path)")
+    .eq("order_id", orderId);
+
+  if (error) throw error;
+  if (!data) return [];
+
+  const rows = data as unknown as Array<{
+    id: string;
+    edit_id: string;
+    quantity: number;
+    provider_item_id: string | null;
+    product_url: string | null;
+    edits: { result_storage_path: string };
+  }>;
+
+  const paths = rows.map((r) => r.edits.result_storage_path);
+  const { data: signed } = await supabase.storage
+    .from("edits")
+    .createSignedUrls(paths, 60 * 60);
+
+  return rows.map((r, i) => ({
+    id: r.id,
+    edit_id: r.edit_id,
+    quantity: r.quantity,
+    provider_item_id: r.provider_item_id,
+    product_url: r.product_url,
+    after_url: signed?.[i]?.signedUrl ?? "",
+  }));
+}
+
 export type OrderWithAlbum = PrintOrder & {
   album_name: string | null;
 };

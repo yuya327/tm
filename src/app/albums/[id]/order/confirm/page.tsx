@@ -51,15 +51,16 @@ export default async function OrderConfirmPage({
       </section>
 
       <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm">
-        <p className="font-medium">この先は SUZURI のページで手続きします</p>
+        <p className="font-medium">この先は SUZURI で手続きします</p>
         <p className="mt-2 text-stone-700">
-          提携先 <strong>SUZURI</strong> にて住所入力・決済・印刷・発送を行います。
-          決済完了後、本サイトの「注文履歴」で状態を確認できます。
+          「決済に進む」を押すと、加工済み画像から <strong>SUZURI</strong> 上にステッカー商品が作成され、
+          各商品ページのリンク一覧が表示されます。住所入力・決済・印刷・発送は SUZURI 側で行います。
         </p>
       </section>
 
       <form action={handoffToSuzuriAction} className="mt-4">
         <input type="hidden" name="orderId" value={order.id} />
+        <input type="hidden" name="albumId" value={id} />
         <div className="space-y-3 rounded-xl border border-stone-200 bg-white p-6">
           <label className="flex items-start gap-2 text-sm">
             <input
@@ -84,7 +85,7 @@ export default async function OrderConfirmPage({
               type="submit"
               className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
             >
-              SUZURI で決済に進む →
+              SUZURI で商品を作成 →
             </button>
           </div>
         </div>
