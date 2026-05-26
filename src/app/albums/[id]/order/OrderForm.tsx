@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { SIZE_OPTIONS, calcTotal, type SizeKey } from "./pricing";
+import type { ProductCatalogRow } from "@/lib/supabase/queries";
 import { createOrderAction } from "./actions";
 
 type Edit = {
@@ -12,24 +12,25 @@ type Edit = {
 export function OrderForm({
   albumId,
   edits,
+  products,
 }: {
   albumId: string;
   edits: Edit[];
+  products: ProductCatalogRow[];
 }) {
-  const [sizeKey, setSizeKey] = useState<SizeKey>("7x7");
+  const [productId, setProductId] = useState<string>(products[0]?.id ?? "");
   const [quantities, setQuantities] = useState<Record<string, number>>(
     Object.fromEntries(edits.map((e) => [e.id, 1]))
   );
   const [pending, setPending] = useState(false);
 
-  const summary = useMemo(
-    () =>
-      calcTotal(
-        sizeKey,
-        edits.map((e) => quantities[e.id] ?? 0)
-      ),
-    [sizeKey, quantities, edits]
-  );
+  const product = products.find((p) => p.id === productId);
+
+  const totals = useMemo(() => {
+    const totalQty = Object.values(quantities).reduce((s, q) => s + q, 0);
+    const subtotal = product ? totalQty * product.sell_price_jpy : 0;
+    return { totalQty, subtotal };
+  }, [quantities, product]);
 
   function setQty(editId: string, q: number) {
     setQuantities((prev) => ({ ...prev, [editId]: Math.max(0, q) }));
@@ -37,12 +38,12 @@ export function OrderForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (summary.totalQty === 0) return;
+    if (totals.totalQty === 0 || !product) return;
     setPending(true);
 
     const form = new FormData();
     form.append("albumId", albumId);
-    form.append("size", sizeKey);
+    form.append("productCatalogId", product.id);
     form.append(
       "items",
       JSON.stringify(
@@ -55,27 +56,34 @@ export function OrderForm({
     await createOrderAction(form);
   }
 
+  if (products.length === 0) {
+    return (
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        販売中の商品がありません。管理画面で商品を有効化してください。
+      </p>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit}>
       <section className="rounded-xl border border-stone-200 bg-white p-6">
-        <h2 className="text-base font-semibold">サイズ</h2>
-        <ul className="mt-3 grid grid-cols-3 gap-3">
-          {SIZE_OPTIONS.map((s) => (
-            <li key={s.key}>
+        <h2 className="text-base font-semibold">商品を選ぶ</h2>
+        <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {products.map((p) => (
+            <li key={p.id}>
               <label className="block cursor-pointer">
                 <input
                   type="radio"
-                  name="size"
-                  checked={sizeKey === s.key}
-                  onChange={() => setSizeKey(s.key)}
+                  name="productId"
+                  checked={productId === p.id}
+                  onChange={() => setProductId(p.id)}
                   className="peer sr-only"
                 />
-                <div className="rounded-lg border-2 border-stone-200 p-3 text-center peer-checked:border-orange-500 peer-checked:bg-orange-50">
-                  <p className="font-medium">{s.label}</p>
-                  <p className="mt-1 text-xs text-stone-500">¥{s.unitJpy}/枚</p>
-                  {s.recommended && (
-                    <p className="mt-1 text-[10px] text-orange-600">おすすめ</p>
-                  )}
+                <div className="rounded-lg border-2 border-stone-200 p-3 peer-checked:border-orange-500 peer-checked:bg-orange-50">
+                  <p className="font-medium">{p.display_name}</p>
+                  <p className="mt-1 text-xs text-stone-500">
+                    ¥{p.sell_price_jpy.toLocaleString()}/枚 (税込)
+                  </p>
                 </div>
               </label>
             </li>
@@ -89,6 +97,7 @@ export function OrderForm({
           {edits.map((edit) => (
             <li key={edit.id} className="rounded-lg border border-stone-200 p-2">
               <div className="aspect-square overflow-hidden rounded">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={edit.after_url}
                   alt=""
@@ -116,30 +125,25 @@ export function OrderForm({
           ))}
         </ul>
         <p className="mt-3 text-right text-sm text-stone-600">
-          合計 {summary.totalQty}枚
+          合計 {totals.totalQty}枚
         </p>
       </section>
 
       <section className="mt-4 rounded-xl border border-stone-200 bg-white p-6">
         <dl className="space-y-1 text-sm">
-          <div className="flex justify-between">
-            <dt>小計</dt>
-            <dd>¥{summary.subtotal.toLocaleString()}</dd>
+          <div className="flex justify-between font-semibold">
+            <dt>商品代金合計 (税込)</dt>
+            <dd>¥{totals.subtotal.toLocaleString()}</dd>
           </div>
-          <div className="flex justify-between">
-            <dt>送料</dt>
-            <dd>¥{summary.shipping.toLocaleString()}</dd>
-          </div>
-          <div className="flex justify-between border-t border-stone-200 pt-2 font-semibold">
-            <dt>合計</dt>
-            <dd>¥{summary.total.toLocaleString()}</dd>
-          </div>
+          <p className="text-xs text-stone-500">
+            ※ 送料は SUZURI 側で別途加算されます。
+          </p>
         </dl>
 
         <div className="mt-6 flex justify-end">
           <button
             type="submit"
-            disabled={pending || summary.totalQty === 0}
+            disabled={pending || totals.totalQty === 0}
             className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
           >
             {pending ? "作成中…" : "注文内容を確認 →"}

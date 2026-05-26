@@ -34,20 +34,17 @@ export default async function OrderConfirmPage({
       <section className="mt-4 rounded-xl border border-stone-200 bg-white p-6">
         <dl className="space-y-3 text-sm">
           <div className="flex justify-between">
-            <dt className="text-stone-500">サイズ</dt>
-            <dd className="font-medium">
-              {order.size_cm_width}×{order.size_cm_height}cm
-            </dd>
-          </div>
-          <div className="flex justify-between">
             <dt className="text-stone-500">数量</dt>
             <dd className="font-medium">{order.total_quantity} 枚</dd>
           </div>
           <div className="flex justify-between border-t border-stone-200 pt-3 text-base font-semibold">
-            <dt>合計</dt>
-            <dd>¥{order.total_jpy.toLocaleString()}（税込・送料込）</dd>
+            <dt>商品代金合計 (税込)</dt>
+            <dd>¥{order.total_jpy.toLocaleString()}</dd>
           </div>
         </dl>
+        <p className="mt-2 text-xs text-stone-500">
+          ※ 送料は SUZURI 側で別途加算されます。
+        </p>
       </section>
 
       <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm">

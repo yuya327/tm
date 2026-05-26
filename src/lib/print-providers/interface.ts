@@ -8,8 +8,12 @@ export interface PrintItem {
   imageDataUri: string;
   /** 表示用タイトル（SUZURI の material title になる） */
   title: string;
-  /** シールサイズ (cm) — SUZURI ではメタ情報として扱う */
-  size: { widthCm: number; heightCm: number };
+  /** SUZURI の商品種別 ID (例: ステッカー=11) */
+  suzuriItemId: number;
+  /** SUZURI の variant ID (代表バリエーション) */
+  suzuriVariantId: number;
+  /** SUZURI に渡すマージン (トリブン、税抜JPY)。0 で原価販売。 */
+  marginJpy: number;
   /** 注文枚数（SUZURI では商品URLに反映できない情報。記録のみ） */
   quantity: number;
 }

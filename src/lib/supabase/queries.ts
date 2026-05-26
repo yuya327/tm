@@ -161,6 +161,104 @@ export async function listEdits(albumId: string): Promise<EditWithUrls[]> {
   }));
 }
 
+// ============================================================================
+// Admin
+// ============================================================================
+
+export async function isCurrentUserAdmin(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+
+  const { data, error } = await supabase
+    .from("admin_users")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error) return false;
+  return data !== null;
+}
+
+// ============================================================================
+// Product Catalog
+// ============================================================================
+
+export type ProductCatalogRow = {
+  id: string;
+  suzuri_item_id: number;
+  suzuri_variant_id: number;
+  name: string;
+  display_name: string;
+  base_price_jpy: number;
+  sell_price_jpy: number;
+  enabled: boolean;
+  sort_order: number;
+};
+
+export async function listEnabledProducts(): Promise<ProductCatalogRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("product_catalog")
+    .select("id, suzuri_item_id, suzuri_variant_id, name, display_name, base_price_jpy, sell_price_jpy, enabled, sort_order")
+    .eq("enabled", true)
+    .order("sort_order", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function listAllProducts(): Promise<ProductCatalogRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("product_catalog")
+    .select("id, suzuri_item_id, suzuri_variant_id, name, display_name, base_price_jpy, sell_price_jpy, enabled, sort_order")
+    .order("sort_order", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getProduct(id: string): Promise<ProductCatalogRow | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("product_catalog")
+    .select("id, suzuri_item_id, suzuri_variant_id, name, display_name, base_price_jpy, sell_price_jpy, enabled, sort_order")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export type ProductCatalogUpdate = {
+  display_name?: string;
+  sell_price_jpy?: number;
+  enabled?: boolean;
+  sort_order?: number;
+};
+
+export async function updateProduct(
+  id: string,
+  patch: ProductCatalogUpdate
+): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("product_catalog")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// 販売価格(税込) から SUZURI に渡すマージン(税抜) を逆算する。
+// SUZURI 側の挙動: (base_price + margin) * 1.10 = 税込売価 (推定。要実測)
+export function calcSuzuriMargin(
+  sellPriceJpyTaxIn: number,
+  basePriceJpyTaxOut: number
+): number {
+  const totalTaxOut = Math.round(sellPriceJpyTaxIn / 1.1);
+  return Math.max(0, totalTaxOut - basePriceJpyTaxOut);
+}
+
 export async function createAlbum(name: string): Promise<Album> {
   const supabase = await createClient();
   const {
@@ -197,11 +295,10 @@ export type PrintOrder = {
 export type PrintOrderItem = {
   edit_id: string;
   quantity: number;
+  product_catalog_id: string;
 };
 
 export type PrintOrderInput = {
-  sizeCmWidth: number;
-  sizeCmHeight: number;
   items: PrintOrderItem[];
   totalJpy: number;
 };
@@ -217,12 +314,13 @@ export async function createPrintOrder(
 
   const totalQuantity = input.items.reduce((sum, i) => sum + i.quantity, 0);
 
+  // size_cm_width/height は SUZURI 連携前のレガシー列。商品カタログ移行後は形式上 0 を入れる。
   const { data: order, error: orderErr } = await supabase
     .from("print_orders")
     .insert({
       user_id: user.id,
-      size_cm_width: input.sizeCmWidth,
-      size_cm_height: input.sizeCmHeight,
+      size_cm_width: 0,
+      size_cm_height: 0,
       total_quantity: totalQuantity,
       total_jpy: input.totalJpy,
       provider: "suzuri",
@@ -237,6 +335,7 @@ export async function createPrintOrder(
     order_id: order.id,
     edit_id: i.edit_id,
     quantity: i.quantity,
+    product_catalog_id: i.product_catalog_id,
   }));
   const { error: itemsErr } = await supabase
     .from("print_order_items")
@@ -275,6 +374,13 @@ export type OrderItemForFulfillment = {
   quantity: number;
   result_storage_path: string;
   mime_type: string;
+  catalog: {
+    suzuri_item_id: number;
+    suzuri_variant_id: number;
+    display_name: string;
+    base_price_jpy: number;
+    sell_price_jpy: number;
+  } | null;
 };
 
 export async function listOrderItemsForFulfillment(
@@ -283,7 +389,9 @@ export async function listOrderItemsForFulfillment(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("print_order_items")
-    .select("id, edit_id, quantity, edits!inner(result_storage_path, photos!inner(mime_type))")
+    .select(
+      "id, edit_id, quantity, edits!inner(result_storage_path, photos!inner(mime_type)), product_catalog(suzuri_item_id, suzuri_variant_id, display_name, base_price_jpy, sell_price_jpy)"
+    )
     .eq("order_id", orderId);
 
   if (error) throw error;
@@ -297,12 +405,20 @@ export async function listOrderItemsForFulfillment(
       result_storage_path: string;
       photos: { mime_type: string };
     };
+    product_catalog: {
+      suzuri_item_id: number;
+      suzuri_variant_id: number;
+      display_name: string;
+      base_price_jpy: number;
+      sell_price_jpy: number;
+    } | null;
   }>).map((r) => ({
     id: r.id,
     edit_id: r.edit_id,
     quantity: r.quantity,
     result_storage_path: r.edits.result_storage_path,
     mime_type: r.edits.photos.mime_type,
+    catalog: r.product_catalog,
   }));
 }
 

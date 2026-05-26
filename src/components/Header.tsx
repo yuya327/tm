@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrentUserAdmin } from "@/lib/supabase/queries";
 import { LogoutButton } from "./LogoutButton";
 
 export async function Header() {
@@ -7,6 +8,7 @@ export async function Header() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const isAdmin = user ? await isCurrentUserAdmin() : false;
 
   return (
     <header className="border-b border-stone-200 bg-white">
@@ -24,6 +26,11 @@ export async function Header() {
             <Link href="/orders" className="hover:text-orange-600">
               注文履歴
             </Link>
+            {isAdmin && (
+              <Link href="/admin" className="hover:text-orange-600">
+                管理
+              </Link>
+            )}
             <span className="rounded-full bg-stone-100 px-3 py-1.5 text-xs text-stone-700">
               {user.email}
             </span>

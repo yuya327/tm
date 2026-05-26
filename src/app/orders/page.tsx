@@ -38,9 +38,7 @@ export default async function OrdersPage() {
                   </p>
                   <p className="mt-1 font-medium">{o.album_name ?? "(unknown)"}</p>
                 </div>
-                <p className="text-sm text-stone-700">
-                  {o.total_quantity}枚 / {o.size_cm_width}×{o.size_cm_height}cm
-                </p>
+                <p className="text-sm text-stone-700">{o.total_quantity}枚</p>
                 <p className="text-sm font-semibold">
                   ¥{o.total_jpy.toLocaleString()}
                 </p>

@@ -1,5 +1,5 @@
 // SUZURI API 実装。
-// 各アイテムごとに POST /api/v1/materials を呼び、ステッカー商品を1点ずつ作成する。
+// 各アイテムごとに POST /api/v1/materials を呼び、商品を1点ずつ作成する。
 // 認証: Bearer Token (SUZURI_API_TOKEN)
 // docs: https://suzuri.jp/developer/documentation/v1
 
@@ -9,10 +9,6 @@ import type {
   PrintOrderResult,
   PrintProvider,
 } from "./interface";
-
-// ステッカー（item id = 11）の唯一の variant: M / ホワイト
-const STICKER_ITEM_ID = 11;
-const STICKER_EXEMPLARY_VARIANT_ID = 606;
 
 interface SuzuriCreateMaterialResponse {
   material: {
@@ -47,11 +43,11 @@ export class SuzuriPrintProvider implements PrintProvider {
     const results: PrintOrderItemResult[] = [];
 
     for (const item of input.items) {
-      const material = await this.createMaterial(item.title, item.imageDataUri);
-      const product = material.products.find((p) => p.item.id === STICKER_ITEM_ID);
+      const material = await this.createMaterial(item);
+      const product = material.products.find((p) => p.item.id === item.suzuriItemId);
       if (!product) {
         throw new Error(
-          `SUZURI: material ${material.material.id} にステッカー商品が含まれていません`
+          `SUZURI: material ${material.material.id} に itemId=${item.suzuriItemId} の商品が含まれていません`
         );
       }
       results.push({
@@ -69,17 +65,22 @@ export class SuzuriPrintProvider implements PrintProvider {
     };
   }
 
-  private async createMaterial(
-    title: string,
-    imageDataUri: string
-  ): Promise<SuzuriCreateMaterialResponse> {
+  private async createMaterial(item: {
+    title: string;
+    imageDataUri: string;
+    suzuriItemId: number;
+    suzuriVariantId: number;
+    marginJpy: number;
+  }): Promise<SuzuriCreateMaterialResponse> {
     const body = {
-      texture: imageDataUri,
-      title,
+      texture: item.imageDataUri,
+      title: item.title,
+      // material 全体のマージン (トリブン)。products[].price は別の意味なのでここに置く。
+      price: item.marginJpy,
       products: [
         {
-          itemId: STICKER_ITEM_ID,
-          exemplaryItemVariantId: STICKER_EXEMPLARY_VARIANT_ID,
+          itemId: item.suzuriItemId,
+          exemplaryItemVariantId: item.suzuriVariantId,
           // SUZURI は非公開だと商品 URL が 404 になり購入できない。
           // 公開しないと自分でも購入導線に乗れないため published: true にする。
           // ショップ表示が気になる場合は SUZURI ダッシュボードから手動で非公開化できる。

@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Container } from "@/components/Container";
-import { getAlbum, listEdits } from "@/lib/supabase/queries";
+import {
+  getAlbum,
+  listEdits,
+  listEnabledProducts,
+} from "@/lib/supabase/queries";
 import { OrderForm } from "./OrderForm";
 
 export default async function OrderPage({
@@ -18,6 +22,8 @@ export default async function OrderPage({
     redirect(`/albums/${id}/style`);
   }
 
+  const products = await listEnabledProducts();
+
   return (
     <Container>
       <Link
@@ -26,13 +32,14 @@ export default async function OrderPage({
       >
         ← 結果に戻る
       </Link>
-      <h1 className="mt-2 text-2xl font-bold">シール注文</h1>
+      <h1 className="mt-2 text-2xl font-bold">注文</h1>
       <p className="mt-1 text-sm text-stone-600">{album.name}</p>
 
       <div className="mt-4">
         <OrderForm
           albumId={id}
           edits={edits.map((e) => ({ id: e.id, after_url: e.after_url }))}
+          products={products}
         />
       </div>
     </Container>
